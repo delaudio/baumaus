@@ -7,16 +7,17 @@ use crate::domain::{OpeningKind, Point, Project, Wall};
 pub fn project_to_obj(project: &Project) -> Vec<u8> {
     let mut obj = String::from("o baumaus-plan\n");
     let mut next_vertex = 1;
+    let mut next_normal = 1;
     for wall in &project.walls {
         for (start, end) in wall_segments(project, wall) {
             append_prism(
                 &mut obj,
                 &mut next_vertex,
+                &mut next_normal,
                 start,
                 end,
                 wall.thickness,
-                0.0,
-                3000.0,
+                (0.0, 3000.0),
             );
         }
         for opening in project
@@ -33,20 +34,20 @@ pub fn project_to_obj(project: &Project) -> Vec<u8> {
             append_prism(
                 &mut obj,
                 &mut next_vertex,
+                &mut next_normal,
                 start,
                 end,
                 wall.thickness,
-                0.0,
-                *sill,
+                (0.0, *sill),
             );
             append_prism(
                 &mut obj,
                 &mut next_vertex,
+                &mut next_normal,
                 start,
                 end,
                 wall.thickness,
-                *sill + 1200.0,
-                3000.0,
+                (*sill + 1200.0, 3000.0),
             );
         }
     }
@@ -56,12 +57,13 @@ pub fn project_to_obj(project: &Project) -> Vec<u8> {
 fn append_prism(
     obj: &mut String,
     next_vertex: &mut usize,
+    next_normal: &mut usize,
     start: Point,
     end: Point,
     thickness: f64,
-    bottom: f64,
-    top: f64,
+    height: (f64, f64),
 ) {
+    let (bottom, top) = height;
     if bottom >= top {
         return;
     }
@@ -69,6 +71,7 @@ fn append_prism(
         return;
     };
     let base = *next_vertex;
+    let normal_base = *next_normal;
     for point in [a, b, c, d] {
         let _ = writeln!(
             obj,
@@ -87,8 +90,25 @@ fn append_prism(
             point.y / 1000.0
         );
     }
-    let _ = write!(obj, "f {base} {} {} {}\nf {} {} {} {}\nf {base} {} {} {}\nf {} {} {} {}\nf {} {} {} {}\nf {} {} {} {}\n", base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7, base + 1, base + 5, base + 4, base + 1, base + 2, base + 6, base + 5, base + 2, base + 3, base + 7, base + 6, base + 3, base, base + 4, base + 7);
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length = dx.hypot(dy);
+    let left = (-dy / length, dx / length);
+    let _ = writeln!(
+        obj,
+        "vn 0 -1 0\nvn 0 1 0\nvn {} 0 {}\nvn {} 0 {}\nvn {} 0 {}\nvn {} 0 {}",
+        left.0,
+        left.1,
+        dx / length,
+        dy / length,
+        -left.0,
+        -left.1,
+        -dx / length,
+        -dy / length
+    );
+    let _ = write!(obj, "f {base}//{normal_base} {}//{normal_base} {}//{normal_base} {}//{normal_base}\nf {}//{} {}//{} {}//{} {}//{}\nf {base}//{} {}//{} {}//{} {}//{}\nf {}//{} {}//{} {}//{} {}//{}\nf {}//{} {}//{} {}//{} {}//{}\nf {}//{} {base}//{} {}//{} {}//{}\n", base + 1, base + 2, base + 3, base + 4, normal_base + 1, base + 5, normal_base + 1, base + 6, normal_base + 1, base + 7, normal_base + 1, normal_base + 2, base + 1, normal_base + 2, base + 5, normal_base + 2, base + 4, normal_base + 2, base + 1, normal_base + 3, base + 2, normal_base + 3, base + 6, normal_base + 3, base + 5, normal_base + 3, base + 2, normal_base + 4, base + 3, normal_base + 4, base + 7, normal_base + 4, base + 6, normal_base + 4, base + 3, normal_base + 5, normal_base + 5, base + 4, normal_base + 5, base + 7, normal_base + 5);
     *next_vertex += 8;
+    *next_normal += 6;
 }
 
 fn wall_segments(project: &Project, wall: &Wall) -> Vec<(Point, Point)> {
@@ -186,6 +206,7 @@ mod tests {
         };
         let obj = String::from_utf8(project_to_obj(&project)).unwrap();
         assert_eq!(obj.matches("\nv ").count(), 8);
+        assert_eq!(obj.matches("\nvn ").count(), 6);
         assert_eq!(obj.matches("\nf ").count(), 6);
     }
 

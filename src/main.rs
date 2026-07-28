@@ -6,7 +6,10 @@ use std::io;
 
 use color_eyre::eyre::Result;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
+        MouseEvent, MouseEventKind,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -53,6 +56,7 @@ struct App {
     auto_build: bool,
     preview: RattyGraphic<'static>,
     has_preview: bool,
+    editor_area: Rect,
     status: String,
     quit: bool,
 }
@@ -77,6 +81,7 @@ impl App {
                     .rotation(DEFAULT_ROTATION),
             ),
             has_preview: false,
+            editor_area: Rect::default(),
             status: "Ready".into(),
             quit: false,
         };
@@ -183,7 +188,7 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    if let Err(error) = execute!(stdout, EnterAlternateScreen) {
+    if let Err(error) = execute!(stdout, EnterAlternateScreen, EnableMouseCapture) {
         disable_raw_mode()?;
         return Err(error.into());
     }
@@ -192,13 +197,17 @@ fn main() -> Result<()> {
         Ok(terminal) => terminal,
         Err(error) => {
             disable_raw_mode()?;
-            execute!(io::stdout(), LeaveAlternateScreen)?;
+            execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
             return Err(error.into());
         }
     };
     let result = run(&mut terminal);
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
     result
 }
@@ -206,12 +215,14 @@ fn main() -> Result<()> {
 fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
     let mut app = App::new();
     while !app.quit {
-        terminal.draw(|frame| draw(frame, &app))?;
+        terminal.draw(|frame| draw(frame, &mut app))?;
         if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
+            match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
                     handle_key(&mut app, key.code);
                 }
+                Event::Mouse(mouse) => handle_mouse(&mut app, mouse),
+                _ => {}
             }
         }
     }
@@ -240,6 +251,7 @@ fn handle_key(app: &mut App, code: KeyCode) {
             app.status = format!("Auto-build {}", if app.auto_build { "on" } else { "off" });
         }
         KeyCode::Char('s') if app.focus == Focus::Plan => app.save(),
+        KeyCode::Char('e') if app.focus == Focus::Plan => app.focus = Focus::Editor,
         KeyCode::Up if app.focus == Focus::Plan => app.rotate_preview(-1.0, 0.0),
         KeyCode::Down if app.focus == Focus::Plan => app.rotate_preview(1.0, 0.0),
         KeyCode::Left if app.focus == Focus::Plan => app.rotate_preview(0.0, -1.0),
@@ -265,6 +277,26 @@ fn handle_key(app: &mut App, code: KeyCode) {
         },
         _ => {}
     }
+}
+
+fn handle_mouse(app: &mut App, mouse: MouseEvent) {
+    if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+        return;
+    }
+    let area = app.editor_area;
+    if mouse.column < area.x
+        || mouse.column >= area.right()
+        || mouse.row < area.y
+        || mouse.row >= area.bottom()
+    {
+        app.focus = Focus::Plan;
+        return;
+    }
+    app.focus = Focus::Editor;
+    let row = usize::from(mouse.row.saturating_sub(area.y.saturating_add(1)));
+    app.cursor_row = row.min(app.source.len().saturating_sub(1));
+    let column = usize::from(mouse.column.saturating_sub(area.x.saturating_add(5)));
+    app.cursor_col = snap_boundary(app.line(), column);
 }
 
 fn previous_boundary(line: &str, cursor: usize) -> usize {
@@ -293,7 +325,7 @@ fn snap_boundary(line: &str, cursor: usize) -> usize {
     }
 }
 
-fn draw(frame: &mut Frame, app: &App) {
+fn draw(frame: &mut Frame, app: &mut App) {
     let areas = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(8), Constraint::Length(2)])
@@ -302,10 +334,11 @@ fn draw(frame: &mut Frame, app: &App) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(areas[0]);
+    app.editor_area = columns[0];
     draw_editor(frame, app, columns[0]);
     draw_plan(frame, app, columns[1]);
     let hint = format!(
-        " {} | Tab pane · arrows rotate · z/x zoom · r reset · F5 build · a auto-build · s save · Esc plan · q quit",
+        " {} | click or e/Tab edit · arrows rotate · z/x zoom · r reset · F5 build · a auto-build · s save · Esc plan · q quit",
         app.status
     );
     frame.render_widget(

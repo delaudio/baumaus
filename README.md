@@ -6,7 +6,7 @@ Baumaus is a small, script-first architectural CAD that lives entirely in the te
 ratty -e cargo run
 ```
 
-Controls: `Tab` switches panes, `F5` builds, `a` toggles automatic build, `s` saves `baumaus.json`, `q` quits. The editor accepts `wall`, `door`, and `window` calls using millimetres:
+Controls: `Tab` switches panes. In the 3D pane, arrows rotate, `z`/`x` zoom, and `r` resets the view. `F5` builds, `a` toggles automatic build, `s` saves `baumaus.json`, and `q` quits. The editor accepts `wall`, `door`, and `window` calls using millimetres:
 
 ```text
 wall([0, 0], [6000, 0], thickness = 300);

@@ -36,6 +36,8 @@ wall([0, 4500], [0, 0], thickness = 300);
 door("wall-001", offset = 1200, width = 900);
 window("wall-002", offset = 900, width = 1200, sill = 900);
 view.fit();"#;
+const DEFAULT_ROTATION: [f32; 3] = [35.0, -125.0, 0.0];
+const DEFAULT_SCALE: f32 = 0.75;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Focus {
@@ -70,9 +72,9 @@ impl App {
                     .id(1)
                     .format(ObjectFormat::Obj)
                     .animate(false)
-                    .scale(0.75)
+                    .scale(DEFAULT_SCALE)
                     .color([214, 188, 133])
-                    .rotation([35.0, -125.0, 0.0]),
+                    .rotation(DEFAULT_ROTATION),
             ),
             has_preview: false,
             status: "Ready".into(),
@@ -153,6 +155,28 @@ impl App {
             Err(error) => self.status = format!("Could not save: {error}"),
         }
     }
+    fn rotate_preview(&mut self, vertical: f32, horizontal: f32) {
+        self.preview.settings_mut().rotation[0] += vertical * 5.0;
+        self.preview.settings_mut().rotation[1] += horizontal * 5.0;
+        self.update_preview("Could not rotate preview");
+    }
+    fn zoom_preview(&mut self, factor: f32) {
+        self.preview.settings_mut().scale =
+            (self.preview.settings().scale * factor).clamp(0.2, 2.0);
+        self.update_preview("Could not zoom preview");
+    }
+    fn reset_preview(&mut self) {
+        self.preview.settings_mut().rotation = DEFAULT_ROTATION;
+        self.preview.settings_mut().scale = DEFAULT_SCALE;
+        self.update_preview("Could not reset preview");
+    }
+    fn update_preview(&mut self, context: &str) {
+        if self.has_preview {
+            if let Err(error) = self.preview.update() {
+                self.status = format!("{context}: {error}");
+            }
+        }
+    }
 }
 
 fn main() -> Result<()> {
@@ -216,6 +240,13 @@ fn handle_key(app: &mut App, code: KeyCode) {
             app.status = format!("Auto-build {}", if app.auto_build { "on" } else { "off" });
         }
         KeyCode::Char('s') if app.focus == Focus::Plan => app.save(),
+        KeyCode::Up if app.focus == Focus::Plan => app.rotate_preview(-1.0, 0.0),
+        KeyCode::Down if app.focus == Focus::Plan => app.rotate_preview(1.0, 0.0),
+        KeyCode::Left if app.focus == Focus::Plan => app.rotate_preview(0.0, -1.0),
+        KeyCode::Right if app.focus == Focus::Plan => app.rotate_preview(0.0, 1.0),
+        KeyCode::Char('z') if app.focus == Focus::Plan => app.zoom_preview(1.1),
+        KeyCode::Char('x') if app.focus == Focus::Plan => app.zoom_preview(1.0 / 1.1),
+        KeyCode::Char('r') if app.focus == Focus::Plan => app.reset_preview(),
         _ if app.focus == Focus::Editor => match code {
             KeyCode::Char(c) => app.insert(c),
             KeyCode::Backspace => app.backspace(),
@@ -274,7 +305,7 @@ fn draw(frame: &mut Frame, app: &App) {
     draw_editor(frame, app, columns[0]);
     draw_plan(frame, app, columns[1]);
     let hint = format!(
-        " {} | Tab pane · F5 build · a auto-build · s save · Esc plan · q quit",
+        " {} | Tab pane · arrows rotate · z/x zoom · r reset · F5 build · a auto-build · s save · Esc plan · q quit",
         app.status
     );
     frame.render_widget(

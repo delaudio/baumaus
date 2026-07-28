@@ -1,0 +1,21 @@
+[package]
+name = "baumaus"
+version = "0.1.0"
+edition = "2021"
+description = "A script-first terminal CAD for architectural plans"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+color-eyre = "0.6"
+crossterm = "0.29"
+ratatui = "0.30"
+ratatui-ratty = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

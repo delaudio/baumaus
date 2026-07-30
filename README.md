@@ -1,6 +1,6 @@
 # Baumaus
 
-Baumaus is a small, script-first architectural CAD that lives entirely in the terminal. It is an original Ratatui implementation: edit a plan on the left and see a live 3D model on the right, rendered inline with the Ratty Graphics Protocol.
+Baumaus is a small, live coding architectural CAD that lives entirely in the terminal. It is an original Ratatui implementation: edit a plan on the left and see a live 3D model on the right, rendered inline with the Ratty Graphics Protocol.
 
 ```sh
 ratty -e cargo run
